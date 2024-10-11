@@ -1,0 +1,29 @@
+{
+  "name": "file-manager",
+  "version": "1.0.0",
+  "description": "Node js course",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:named": "node src/index.js --username=Gemer31",
+    "dev": "nodemon src/index.js --username=Gemer31"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gemer31/file-manager.git"
+  },
+  "keywords": [
+    "Node",
+    "JS"
+  ],
+  "author": "Gemer31",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Gemer31/file-manager/issues"
+  },
+  "homepage": "https://github.com/Gemer31/file-manager#readme",
+  "dependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
