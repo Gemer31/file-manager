@@ -98,19 +98,23 @@ export class App {
     }
 
     async cd(p) {
-        const newPath = (existsSync(p) && p !== '..') ? p : this._resolvePath(p);
+        const newPath =  this._resolvePath(p);
         await checkPathExistOrError(newPath);
         this._currentPath = newPath;
     }
 
-    async cp(srcPath, destinationPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        const resolvedDestinationPath = this._resolvePath(destinationPath);
-        await checkPathExistOrError(resolvedSrcPath);
-        await checkPathNotExistOrError(resolvedDestinationPath);
+    async cp(filePath, destinationDirectoryPath) {
+        const resolvedFilePath = this._resolvePath(filePath);
+        await checkPathExistOrError(resolvedFilePath);
+        const fileName = path.basename(resolvedFilePath);
+
+        let resolvedDestinationDirectoryPath = path
+            .join(this._resolvePath(destinationDirectoryPath), fileName);
+        await checkPathNotExistOrError(resolvedDestinationDirectoryPath);
+
         await pipeline(
-            createReadStream(resolvedSrcPath),
-            createWriteStream(resolvedDestinationPath),
+            createReadStream(resolvedFilePath),
+            createWriteStream(resolvedDestinationDirectoryPath),
         );
     }
 
@@ -142,11 +146,12 @@ export class App {
         await rm(resolvedSrcPath);
     }
 
-    async rn(srcPath, destinationPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        const resolvedDestinationPath = this._resolvePath(destinationPath);
-        await checkPathExistOrError(this._resolvePath(srcPath));
-        await rename(resolvedSrcPath, resolvedDestinationPath);
+    async rn(filePath, newFileName) {
+        const resolvedFilePath = this._resolvePath(filePath);
+        await checkPathExistOrError(this._resolvePath(filePath));
+        const dirPath = path.dirname(resolvedFilePath);
+        const resolvedNewFilePath = path.join(dirPath, newFileName);
+        await rename(resolvedFilePath, resolvedNewFilePath);
     }
 
     async hash(srcPath) {
@@ -179,7 +184,7 @@ export class App {
     }
 
     _resolvePath(p) {
-        return path.resolve(this._currentPath, p);
+        return path.isAbsolute(p) ? p : path.resolve(this._currentPath, p);
     }
 
     async _processZip(srcPath, destinationPath, brotli) {
