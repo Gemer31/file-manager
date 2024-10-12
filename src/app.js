@@ -4,10 +4,10 @@ import {createInterface} from "readline/promises";
 import path from "path";
 import {printSystemInfo, systemOperationValidate} from "./system.js";
 import {compress, decompress} from "./zip.js";
-import {hash} from "./hash.js";
 import {createReadStream, createWriteStream, existsSync} from "fs";
 import {readdir, rename, rm, writeFile} from "fs/promises";
-import {pipeline} from "stream";
+import {pipeline} from "stream/promises";
+import {createHash} from "crypto";
 
 const COMMAND_SUCCEED = {
     READ_FILE: 'cat',
@@ -31,7 +31,6 @@ const COMMANDS = {
 }
 
 export class App {
-
     constructor(initPath) {
         this._currentPath = initPath;
     }
@@ -51,29 +50,35 @@ export class App {
     }
 
     async cp(srcPath, destinationPath) {
-        await checkPathExistOrError(this._resolvePath(srcPath));
-        await checkPathNotExistOrError(this._resolvePath(destinationPath));
-        await pipeline(createReadStream(srcPath), createWriteStream(destinationPath));
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        const resolvedDestinationPath = this._resolvePath(destinationPath);
+        await checkPathExistOrError(resolvedSrcPath);
+        await checkPathNotExistOrError(resolvedDestinationPath);
+        await pipeline(
+            createReadStream(resolvedSrcPath),
+            createWriteStream(resolvedDestinationPath),
+        );
     }
 
     async mv(srcPath, destinationPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        const resolvedDestinationPath = this._resolvePath(destinationPath);
-        await checkPathExistOrError(this._resolvePath(srcPath));
-        await this.cp(resolvedSrcPath, resolvedDestinationPath);
-        await this.rm(resolvedSrcPath);
+        await this.cp(srcPath, destinationPath);
+        await this.rm(srcPath);
     }
 
     async cat(srcPath) {
         const resolvedPath = this._resolvePath(srcPath);
         await checkPathExistOrError(resolvedPath);
         const stream = createReadStream(resolvedPath, 'utf-8');
-        await pipeline(stream, process.stdout);
+        stream.pipe(process.stdout);
+        await new Promise((resolve, reject) => {
+            stream.on('error', reject);
+            stream.on('end', resolve);
+        });
     }
 
     async add(srcPath) {
         const resolvedSrcPath = this._resolvePath(srcPath);
-        await checkPathExistOrError(resolvedSrcPath);
+        await checkPathNotExistOrError(resolvedSrcPath);
         await writeFile(resolvedSrcPath, '', {flag: 'wx'});
     }
 
@@ -93,7 +98,9 @@ export class App {
     async hash(srcPath) {
         const resolvedSrcPath = this._resolvePath(srcPath);
         await checkPathExistOrError(resolvedSrcPath);
-        await hash(resolvedSrcPath);
+        const hash = createHash('sha256');
+        await pipeline(createReadStream(resolvedSrcPath), hash);
+        console.log(`Hash of ${resolvedSrcPath} is: ${hash.digest('hex')}`);
     }
 
     async ls() {
@@ -158,11 +165,7 @@ export class App {
     }
 
     async start() {
-        const rl = createInterface({
-            input: process.stdin,
-            output: process.stdout,
-            terminal: false,
-        });
+        const rl = createInterface({input: process.stdin, output: process.stdout, terminal: false});
 
         while (true) {
             const input = await rl.question(`You are currently in ${this._currentPath}\n`);
@@ -175,7 +178,7 @@ export class App {
                     await this[command](...args);
 
                     if (Object.values(COMMAND_SUCCEED).includes(command)) {
-                        console.log(MESSAGES.operationSuccessful);
+                        console.log('\n' + MESSAGES.operationSuccessful);
                     }
                 } catch {
                     console.log(MESSAGES.operationFailed);
