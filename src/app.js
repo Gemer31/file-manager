@@ -3,7 +3,7 @@ import {MESSAGES} from "./constants.js";
 import {createInterface} from "readline/promises";
 import path from "path";
 import {printSystemInfo, systemOperationValidate} from "./system.js";
-import {createReadStream, createWriteStream, existsSync} from "fs";
+import {createReadStream, createWriteStream} from "fs";
 import {readdir, rename, rm, writeFile} from "fs/promises";
 import {pipeline} from "stream/promises";
 import {createHash} from "crypto";
@@ -134,16 +134,16 @@ export class App {
         });
     }
 
-    async add(srcPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        await checkPathNotExistOrError(resolvedSrcPath);
-        await writeFile(resolvedSrcPath, '', {flag: 'wx'});
+    async add(destinationPath) {
+        const resolvedDestinationPath = this._resolvePath(destinationPath);
+        await checkPathNotExistOrError(resolvedDestinationPath);
+        await writeFile(resolvedDestinationPath, '', {flag: 'wx'});
     }
 
-    async rm(srcPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        await checkPathExistOrError(resolvedSrcPath);
-        await rm(resolvedSrcPath);
+    async rm(filePath) {
+        const resolvedFilePath = this._resolvePath(filePath);
+        await checkPathExistOrError(resolvedFilePath);
+        await rm(resolvedFilePath);
     }
 
     async rn(filePath, newFileName) {
@@ -154,12 +154,12 @@ export class App {
         await rename(resolvedFilePath, resolvedNewFilePath);
     }
 
-    async hash(srcPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        await checkPathExistOrError(resolvedSrcPath);
+    async hash(filePath) {
+        const resolvedFilePath = this._resolvePath(filePath);
+        await checkPathExistOrError(resolvedFilePath);
         const hash = createHash('sha256');
-        await pipeline(createReadStream(resolvedSrcPath), hash);
-        console.log(`Hash of ${resolvedSrcPath} is: ${hash.digest('hex')}`);
+        await pipeline(createReadStream(resolvedFilePath), hash);
+        console.log(`Hash of ${resolvedFilePath} is: ${hash.digest('hex')}`);
     }
 
     async ls() {
@@ -175,27 +175,29 @@ export class App {
         printSystemInfo(operation);
     }
 
-    async compress(srcPath, destinationPath) {
-        await this._processZip(srcPath, destinationPath, createBrotliCompress());
+    async compress(filePath, destinationPath) {
+        await this._processZip(filePath, destinationPath, createBrotliCompress());
     }
 
-    async decompress(srcPath, destinationPath) {
-        await this._processZip(srcPath, destinationPath, createBrotliDecompress());
+    async decompress(filePath, destinationPath) {
+        await this._processZip(filePath, destinationPath, createBrotliDecompress());
     }
 
     _resolvePath(p) {
         return path.isAbsolute(p) ? p : path.resolve(this._currentPath, p);
     }
 
-    async _processZip(srcPath, destinationPath, brotli) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
+    async _processZip(filePath, destinationPath, brotli) {
+        const resolvedFilePath = this._resolvePath(filePath);
+        await checkPathExistOrError(resolvedFilePath);
+
         const resolvedDestinationPath = this._resolvePath(destinationPath);
-        await checkPathExistOrError(resolvedSrcPath);
         await checkPathNotExistOrError(resolvedDestinationPath);
+
         await pipeline(
-            createReadStream(srcPath),
+            createReadStream(resolvedFilePath),
             brotli,
-            createWriteStream(destinationPath)
+            createWriteStream(resolvedDestinationPath)
         );
     }
 }
