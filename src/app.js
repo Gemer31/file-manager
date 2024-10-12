@@ -1,25 +1,33 @@
-import {parseInput} from "./utils.js";
+import {checkPathExistOrError, checkPathNotExistOrError, parseInput} from "./helpers.js";
 import {MESSAGES} from "./constants.js";
 import {createInterface} from "readline/promises";
 import path from "path";
 import {printSystemInfo, systemOperationValidate} from "./system.js";
-import {printDirFilesList} from "./file.js";
+import {compress, decompress} from "./zip.js";
+import {hash} from "./hash.js";
+import {createReadStream, createWriteStream, existsSync} from "fs";
+import {readdir, rename, rm, writeFile} from "fs/promises";
+import {pipeline} from "stream";
 
-const COMMANDS = {
-    GO_TO_UPPER_DIR: 'up',
-    GO_TO_DIR: 'cd',
-    PRINT_DIR_FILES_LIST: 'ls',
+const COMMAND_SUCCEED = {
     READ_FILE: 'cat',
     CREATE_FILE: 'add',
     RENAME_FILE: 'rn',
     COPY_FILE: 'cp',
     MOVE_FILE: 'mv',
     DELETE_FILE: 'rm',
-    EXIT: '.exit',
+}
+
+const COMMANDS = {
+    GO_TO_UPPER_DIR: 'up',
+    GO_TO_DIR: 'cd',
+    PRINT_DIR_FILES_LIST: 'ls',
     OPERATION_SYSTEM: 'os',
     HASH_FILE: 'hash',
     COMPRESS: 'compress',
-    DECOMPRESS: 'decompress'
+    DECOMPRESS: 'decompress',
+    EXIT: '.exit',
+    ...COMMAND_SUCCEED,
 }
 
 export class App {
@@ -32,29 +40,129 @@ export class App {
         return path.resolve(this._currentPath, p);
     }
 
-    async ls() {
-        await printDirFilesList(this._resolvePath(this._currentPath));
+    async up() {
+        await this.cd('..');
     }
 
-    async os([operation]) {
+    async cd(p) {
+        const newPath = (existsSync(p) && p !== '..') ? p : this._resolvePath(p);
+        await checkPathExistOrError(newPath);
+        this._currentPath = newPath;
+    }
+
+    async cp(srcPath, destinationPath) {
+        await checkPathExistOrError(this._resolvePath(srcPath));
+        await checkPathNotExistOrError(this._resolvePath(destinationPath));
+        await pipeline(createReadStream(srcPath), createWriteStream(destinationPath));
+    }
+
+    async mv(srcPath, destinationPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        const resolvedDestinationPath = this._resolvePath(destinationPath);
+        await checkPathExistOrError(this._resolvePath(srcPath));
+        await this.cp(resolvedSrcPath, resolvedDestinationPath);
+        await this.rm(resolvedSrcPath);
+    }
+
+    async cat(srcPath) {
+        const resolvedPath = this._resolvePath(srcPath);
+        await checkPathExistOrError(resolvedPath);
+        const stream = createReadStream(resolvedPath, 'utf-8');
+        await pipeline(stream, process.stdout);
+    }
+
+    async add(srcPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        await checkPathExistOrError(resolvedSrcPath);
+        await writeFile(resolvedSrcPath, '', {flag: 'wx'});
+    }
+
+    async rm(srcPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        await checkPathExistOrError(resolvedSrcPath);
+        await rm(resolvedSrcPath);
+    }
+
+    async rn(srcPath, destinationPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        const resolvedDestinationPath = this._resolvePath(destinationPath);
+        await checkPathExistOrError(this._resolvePath(srcPath));
+        await rename(resolvedSrcPath, resolvedDestinationPath);
+    }
+
+    async hash(srcPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        await checkPathExistOrError(resolvedSrcPath);
+        await hash(resolvedSrcPath);
+    }
+
+    async ls() {
+        const dirList = await readdir(this._currentPath, {withFileTypes: true});
+        const table = dirList
+            ?.filter((item) => (!item.isSymbolicLink()))
+            ?.sort((first, second) => (first.isFile() - second.isFile()))
+            ?.map((item) => ({Name: item.name, Type: item.isFile() ? 'file' : 'directory'}));
+        console.table(table);
+    }
+
+    async os(operation) {
         printSystemInfo(operation);
+    }
+
+    async compress(srcPath, destinationPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        const resolvedDestinationPath = this._resolvePath(destinationPath);
+        await checkPathExistOrError(resolvedSrcPath);
+        await checkPathNotExistOrError(resolvedDestinationPath);
+        await compress(resolvedSrcPath, resolvedDestinationPath);
+    }
+
+    async decompress(srcPath, destinationPath) {
+        const resolvedSrcPath = this._resolvePath(srcPath);
+        const resolvedDestinationPath = this._resolvePath(destinationPath);
+        await checkPathExistOrError(resolvedSrcPath);
+        await checkPathNotExistOrError(resolvedDestinationPath);
+        await decompress(resolvedSrcPath, resolvedDestinationPath);
     }
 
     validate(command, args) {
         switch (command) {
+            case COMMANDS.GO_TO_UPPER_DIR:
             case COMMANDS.PRINT_DIR_FILES_LIST: {
                 return true
             }
+
+            case COMMANDS.CREATE_FILE:
+            case COMMANDS.GO_TO_DIR:
+            case COMMANDS.READ_FILE:
+            case COMMANDS.DELETE_FILE:
+            case COMMANDS.HASH_FILE: {
+                return args[0];
+            }
+
+            case COMMANDS.RENAME_FILE:
+            case COMMANDS.COPY_FILE:
+            case COMMANDS.MOVE_FILE:
+            case COMMANDS.COMPRESS:
+            case COMMANDS.DECOMPRESS: {
+                return args[0] && args[1];
+            }
+
             case COMMANDS.OPERATION_SYSTEM: {
                 return systemOperationValidate(args[0]);
             }
+
             default:
                 return false;
         }
     }
 
     async start() {
-        const rl = createInterface(process.stdin, process.stdout);
+        const rl = createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            terminal: false,
+        });
 
         while (true) {
             const input = await rl.question(`You are currently in ${this._currentPath}\n`);
@@ -64,7 +172,11 @@ export class App {
 
             if (this.validate(command, args)) {
                 try {
-                    await this[command](args);
+                    await this[command](...args);
+
+                    if (Object.values(COMMAND_SUCCEED).includes(command)) {
+                        console.log(MESSAGES.operationSuccessful);
+                    }
                 } catch {
                     console.log(MESSAGES.operationFailed);
                 }

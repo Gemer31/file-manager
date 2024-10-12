@@ -1,5 +1,6 @@
 import {App} from "./app.js";
 import os from "os";
+import path from "path";
 
 export const USER_NAME_ARG = '--username=';
 
@@ -16,5 +17,5 @@ process.on('exit', () => {
     console.log(`Thank you for using File Manager, ${userName}, goodbye!`);
 })
 
-const app = new App(os.homedir());
+const app = new App(path.join(os.homedir(), 'new'));
 app.start();
