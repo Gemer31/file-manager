@@ -3,11 +3,11 @@ import {MESSAGES} from "./constants.js";
 import {createInterface} from "readline/promises";
 import path from "path";
 import {printSystemInfo, systemOperationValidate} from "./system.js";
-import {compress, decompress} from "./zip.js";
 import {createReadStream, createWriteStream, existsSync} from "fs";
 import {readdir, rename, rm, writeFile} from "fs/promises";
 import {pipeline} from "stream/promises";
 import {createHash} from "crypto";
+import {createBrotliCompress, createBrotliDecompress} from "zlib";
 
 const COMMAND_SUCCEED = {
     READ_FILE: 'cat',
@@ -35,9 +35,63 @@ export class App {
         this._currentPath = initPath;
     }
 
-    _resolvePath(p) {
-        return path.resolve(this._currentPath, p);
+    async start() {
+        const rl = createInterface({input: process.stdin, output: process.stdout, terminal: false});
+
+        while (true) {
+            const input = await rl.question(`You are currently in ${this._currentPath}\n`);
+            const [command, args] = parseInput(input);
+
+            if (command === COMMANDS.EXIT) process.exit(0);
+
+            if (this.validate(command, args)) {
+                try {
+                    await this[command](...args);
+
+                    if (Object.values(COMMAND_SUCCEED).includes(command)) {
+                        console.log('\n' + MESSAGES.operationSuccessful);
+                    }
+                } catch {
+                    console.log(MESSAGES.operationFailed);
+                }
+            } else {
+                console.log(MESSAGES.invalidInput);
+            }
+        }
     }
+
+    validate(command, args) {
+        switch (command) {
+            case COMMANDS.GO_TO_UPPER_DIR:
+            case COMMANDS.PRINT_DIR_FILES_LIST: {
+                return true
+            }
+
+            case COMMANDS.CREATE_FILE:
+            case COMMANDS.GO_TO_DIR:
+            case COMMANDS.READ_FILE:
+            case COMMANDS.DELETE_FILE:
+            case COMMANDS.HASH_FILE: {
+                return args[0];
+            }
+
+            case COMMANDS.RENAME_FILE:
+            case COMMANDS.COPY_FILE:
+            case COMMANDS.MOVE_FILE:
+            case COMMANDS.COMPRESS:
+            case COMMANDS.DECOMPRESS: {
+                return args[0] && args[1];
+            }
+
+            case COMMANDS.OPERATION_SYSTEM: {
+                return systemOperationValidate(args[0]);
+            }
+
+            default:
+                return false;
+        }
+    }
+
 
     async up() {
         await this.cd('..');
@@ -117,75 +171,26 @@ export class App {
     }
 
     async compress(srcPath, destinationPath) {
-        const resolvedSrcPath = this._resolvePath(srcPath);
-        const resolvedDestinationPath = this._resolvePath(destinationPath);
-        await checkPathExistOrError(resolvedSrcPath);
-        await checkPathNotExistOrError(resolvedDestinationPath);
-        await compress(resolvedSrcPath, resolvedDestinationPath);
+        await this._processZip(srcPath, destinationPath, createBrotliCompress());
     }
 
     async decompress(srcPath, destinationPath) {
+        await this._processZip(srcPath, destinationPath, createBrotliDecompress());
+    }
+
+    _resolvePath(p) {
+        return path.resolve(this._currentPath, p);
+    }
+
+    async _processZip(srcPath, destinationPath, brotli) {
         const resolvedSrcPath = this._resolvePath(srcPath);
         const resolvedDestinationPath = this._resolvePath(destinationPath);
         await checkPathExistOrError(resolvedSrcPath);
         await checkPathNotExistOrError(resolvedDestinationPath);
-        await decompress(resolvedSrcPath, resolvedDestinationPath);
-    }
-
-    validate(command, args) {
-        switch (command) {
-            case COMMANDS.GO_TO_UPPER_DIR:
-            case COMMANDS.PRINT_DIR_FILES_LIST: {
-                return true
-            }
-
-            case COMMANDS.CREATE_FILE:
-            case COMMANDS.GO_TO_DIR:
-            case COMMANDS.READ_FILE:
-            case COMMANDS.DELETE_FILE:
-            case COMMANDS.HASH_FILE: {
-                return args[0];
-            }
-
-            case COMMANDS.RENAME_FILE:
-            case COMMANDS.COPY_FILE:
-            case COMMANDS.MOVE_FILE:
-            case COMMANDS.COMPRESS:
-            case COMMANDS.DECOMPRESS: {
-                return args[0] && args[1];
-            }
-
-            case COMMANDS.OPERATION_SYSTEM: {
-                return systemOperationValidate(args[0]);
-            }
-
-            default:
-                return false;
-        }
-    }
-
-    async start() {
-        const rl = createInterface({input: process.stdin, output: process.stdout, terminal: false});
-
-        while (true) {
-            const input = await rl.question(`You are currently in ${this._currentPath}\n`);
-            const [command, args] = parseInput(input);
-
-            if (command === COMMANDS.EXIT) process.exit(0);
-
-            if (this.validate(command, args)) {
-                try {
-                    await this[command](...args);
-
-                    if (Object.values(COMMAND_SUCCEED).includes(command)) {
-                        console.log('\n' + MESSAGES.operationSuccessful);
-                    }
-                } catch {
-                    console.log(MESSAGES.operationFailed);
-                }
-            } else {
-                console.log(MESSAGES.invalidInput);
-            }
-        }
+        await pipeline(
+            createReadStream(srcPath),
+            brotli,
+            createWriteStream(destinationPath)
+        );
     }
 }
