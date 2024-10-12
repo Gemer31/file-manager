@@ -1,8 +1,9 @@
 import {existsSync} from "fs";
 
 export function parseInput(input) {
-    const splitted = input.split(' ');
-    return [splitted[0], splitted.slice(1)];
+    const regex = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g;
+    const matches = input.match(regex).map(match => match.replace(/^["']|["']$/g, ''));
+    return [matches[0], matches.slice(1)];
 }
 
 export async function checkPathExistOrError(path) {
