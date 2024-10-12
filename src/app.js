@@ -16,6 +16,8 @@ const COMMAND_SUCCEED = {
     COPY_FILE: 'cp',
     MOVE_FILE: 'mv',
     DELETE_FILE: 'rm',
+    COMPRESS: 'compress',
+    DECOMPRESS: 'decompress',
 }
 
 const COMMANDS = {
@@ -24,8 +26,6 @@ const COMMANDS = {
     PRINT_DIR_FILES_LIST: 'ls',
     OPERATION_SYSTEM: 'os',
     HASH_FILE: 'hash',
-    COMPRESS: 'compress',
-    DECOMPRESS: 'decompress',
     EXIT: '.exit',
     ...COMMAND_SUCCEED,
 }
