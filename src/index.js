@@ -1,7 +1,7 @@
-import os from 'os';
-import App from "./app.js";
+import {App} from "./app.js";
+import os from "os";
 
-const USER_NAME_ARG = '--username=';
+export const USER_NAME_ARG = '--username=';
 
 const userName = process
     .argv
@@ -17,4 +17,4 @@ process.on('exit', () => {
 })
 
 const app = new App(os.homedir());
-await app.start();
+app.start();
