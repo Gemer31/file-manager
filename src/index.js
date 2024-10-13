@@ -1,9 +1,7 @@
 import {App} from "./app.js";
 import os from "os";
-import path from "path";
 
 export const USER_NAME_ARG = '--username=';
-
 const userName = process
     .argv
     ?.slice(2)
@@ -17,5 +15,5 @@ process.on('exit', () => {
     console.log(`Thank you for using File Manager, ${userName}, goodbye!`);
 })
 
-const app = new App(path.join(os.homedir(), 'new'));
+const app = new App(os.homedir());
 app.start();
